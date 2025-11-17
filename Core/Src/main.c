@@ -42,11 +42,21 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint32_t adc_value;
 float sensor_voltage;
+
+// adresses of the sensors
+#define HDC_ADDR	0x45 << 1
+
+// sensor regs for commands
+#define HDC_WHOAMI_WRITE	0x3781
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,6 +64,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -94,8 +105,44 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_ADC_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  	  uint8_t i = 0, ret;
+  	uint8_t Buffer[25] = {0};
+  	uint8_t Space[] = " - ";
+  	uint8_t StartMSG[] = "Starting I2C Scanning: \r\n";
+  	uint8_t EndMSG[] = "Done! \r\n\r\n";
 
+    HAL_UART_Transmit(&huart2, StartMSG, sizeof(StartMSG), 10000);
+    for(i=1; i<128; i++)
+    {
+        ret = HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(i<<1), 3, 5);
+        if (ret != HAL_OK) /* No ACK Received At That Address */
+        {
+            HAL_UART_Transmit(&huart2, Space, sizeof(Space), 10000);
+        }
+        else if(ret == HAL_OK)
+        {
+            sprintf(Buffer, "0x%X", i);
+            HAL_UART_Transmit(&huart2, Buffer, sizeof(Buffer), 10000);
+        }
+    }
+    HAL_UART_Transmit(&huart2, EndMSG, sizeof(EndMSG), 10000);
+
+    // HDC sensor init
+
+    uint8_t read_id_cmd[2] = {0x37, 0x81};
+    HAL_I2C_Master_Transmit(&hi2c1, HDC_ADDR, read_id_cmd, 2, HAL_MAX_DELAY);
+
+    // 2. Read the 3byte response
+    uint8_t id_buffer[3];
+    HAL_I2C_Master_Receive(&hi2c1, HDC_ADDR, id_buffer, 3, HAL_MAX_DELAY);
+
+    // 3. Check if the ID is 0x3000
+    if (id_buffer[0] == 0x30 && id_buffer[1] == 0x00)
+    {
+        printf("It works");
+    }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -105,6 +152,35 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  // comms with HDC sensor
+
+	  //first we send 2 byte trigger on demand command
+	  uint8_t cmd_buffer[2];
+	  cmd_buffer[0] = 0x24;
+	  cmd_buffer[1] = 0x00;
+
+	  HAL_I2C_Master_Transmit(&hi2c1, HDC_ADDR, cmd_buffer, 2, 100);
+
+	  HAL_Delay(15);
+
+	  // now we get the 6 byte data from sensor with temperature and humidity
+	  uint8_t rx_buffer[6];
+
+	  HAL_I2C_Master_Receive(&hi2c1, HDC_ADDR, rx_buffer, 6, 100);
+
+	  uint16_t T_raw = (rx_buffer[0] << 8) | rx_buffer[1];
+
+	  uint16_t RH_raw = (rx_buffer[3] << 8) | rx_buffer[4];
+
+	  float temperature = -45.0f + (175.0f * (float)T_raw / 65535.0f);
+
+	  float humidity = 100.0f * (float)RH_raw / 65535.0f;
+
+	  printf("temperature: %.2f C, humidity: %.2f \n\r", temperature, humidity);
+
+	  // end for HDC sensor
+
+	  // communication with the analog sensor for air quality
 	  HAL_ADC_Start(&hadc);
 
 	  HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
@@ -117,7 +193,7 @@ int main(void)
 	  HAL_Delay(2000);
 
 	  HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_RESET);
-	  HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, GPIO_PIN_RESET);
+	  HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_RESET);
 	  HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_RESET);
 
 	  if (voltage <= 0.8f)
@@ -128,13 +204,15 @@ int main(void)
 	  else if (voltage <= 1.5f)
 	  {
 		  printf("ADC = %.3f V, Quality: MEDIUM \n\r", voltage);
-		  HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, GPIO_PIN_SET);
+		  HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_SET);
 	  }
 	  else
 	  {
 		  printf("ADC = %.3f V, Quality: BAD \n\r", voltage);
 		  HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_SET);
 	  }
+
+
   }
   /* USER CODE END 3 */
 }
@@ -238,6 +316,40 @@ static void MX_ADC_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -289,13 +401,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, D6_Pin|D4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, D6_Pin|D5_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : D6_Pin D4_Pin */
-  GPIO_InitStruct.Pin = D6_Pin|D4_Pin;
+  /*Configure GPIO pins : D6_Pin D5_Pin */
+  GPIO_InitStruct.Pin = D6_Pin|D5_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
