@@ -52,9 +52,9 @@ float sensor_voltage;
 
 // adresses of the sensors
 #define HDC_ADDR	0x45 << 1
+#define ILP_ADDR	0x5C << 1
 
 // sensor regs for commands
-#define HDC_WHOAMI_WRITE	0x3781
 
 
 /* USER CODE END PV */
@@ -141,8 +141,22 @@ int main(void)
     // 3. Check if the ID is 0x3000
     if (id_buffer[0] == 0x30 && id_buffer[1] == 0x00)
     {
-        printf("It works");
+        printf("HDC sensor works\n\r");
     }
+
+    //ilp sensor
+	  uint8_t data_to_write = 0x40;
+	  uint16_t reg_address = 0x10; // CTRL_REG1
+
+	  HAL_I2C_Mem_Write(&hi2c1,
+			  	  	  	ILP_ADDR,
+	                    reg_address,
+	                    I2C_MEMADD_SIZE_8BIT,
+	                    &data_to_write,
+	                    1,
+	                    100);
+	  HAL_Delay(1000);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -152,6 +166,25 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  // comms with ILP sensor
+	  uint8_t pressure_data[3];
+	  uint16_t start_reg_address = 0x28;
+	  float pressure_raw;
+	  float pressure_hPa;
+
+	  HAL_I2C_Mem_Read(&hi2c1,
+	                   ILP_ADDR,
+	                   start_reg_address,
+	                   I2C_MEMADD_SIZE_8BIT,
+	                   pressure_data,
+	                   3,
+	                   100);
+
+	  pressure_raw = (int32_t)((pressure_data[2] << 16) | (pressure_data[1] << 8) | pressure_data[0]);
+	  pressure_hPa = (float)pressure_raw / 4096.0f;
+	  printf("Humidity: %.2f kPa\n\r", pressure_hPa);
+
+	  HAL_Delay(100);
 	  // comms with HDC sensor
 
 	  //first we send 2 byte trigger on demand command
@@ -159,14 +192,14 @@ int main(void)
 	  cmd_buffer[0] = 0x24;
 	  cmd_buffer[1] = 0x00;
 
-	  HAL_I2C_Master_Transmit(&hi2c1, HDC_ADDR, cmd_buffer, 2, 100);
+	  HAL_I2C_Master_Transmit(&hi2c1, HDC_ADDR, cmd_buffer, 2, HAL_MAX_DELAY);
 
 	  HAL_Delay(15);
 
 	  // now we get the 6 byte data from sensor with temperature and humidity
 	  uint8_t rx_buffer[6];
 
-	  HAL_I2C_Master_Receive(&hi2c1, HDC_ADDR, rx_buffer, 6, 100);
+	  HAL_I2C_Master_Receive(&hi2c1, HDC_ADDR, rx_buffer, 6, HAL_MAX_DELAY);
 
 	  uint16_t T_raw = (rx_buffer[0] << 8) | rx_buffer[1];
 
