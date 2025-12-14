@@ -44,6 +44,7 @@ ADC_HandleTypeDef hadc;
 
 I2C_HandleTypeDef hi2c1;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -65,6 +66,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -106,6 +108,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC_Init();
   MX_I2C1_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   	  uint8_t i = 0, ret;
   	uint8_t Buffer[25] = {0};
@@ -157,6 +160,27 @@ int main(void)
 	                    100);
 	  HAL_Delay(1000);
 
+	  // sending integers through 433 MHz
+
+	  void Send_Integer(uint16_t value) {
+		  uint8_t packet[7];
+
+		      packet[0] = 0xAA;
+		      packet[1] = 0xAA;
+		      packet[2] = 0xAA;
+
+		      packet[3] = 0x2D;
+
+		      packet[4] = (value >> 8) & 0xFF;
+		      packet[5] = value & 0xFF;
+
+		      // 4. Checksum (Simple addition)
+		      packet[6] = packet[4] + packet[5];
+
+		      // Send via UART
+		      HAL_UART_Transmit(&huart1, packet, 7, 100);
+	  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -182,7 +206,7 @@ int main(void)
 
 	  pressure_raw = (int32_t)((pressure_data[2] << 16) | (pressure_data[1] << 8) | pressure_data[0]);
 	  pressure_hPa = (float)pressure_raw / 4096.0f;
-	  printf("Humidity: %.2f kPa\n\r", pressure_hPa);
+	  printf("Pressure: %.2f hPa\n\r", pressure_hPa);
 
 	  HAL_Delay(100);
 	  // comms with HDC sensor
@@ -222,28 +246,32 @@ int main(void)
 
 	  float voltage = 3.3f * value / 4096.0f;
 
+	  //send data to another stm32
+	  Send_Integer(42);
 
 	  HAL_Delay(2000);
 
-	  HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_RESET);
-	  HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_RESET);
-	  HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_RESET);
 
-	  if (voltage <= 0.8f)
-	  {
-		  printf("ADC = %.3f V, Quality: GOOD \n\r", voltage);
-		  HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_SET);
-	  }
-	  else if (voltage <= 1.5f)
-	  {
-		  printf("ADC = %.3f V, Quality: MEDIUM \n\r", voltage);
-		  HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_SET);
-	  }
-	  else
-	  {
-		  printf("ADC = %.3f V, Quality: BAD \n\r", voltage);
-		  HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_SET);
-	  }
+	  // showing the data
+	  //HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_RESET);
+	  //HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_RESET);
+	  //HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_RESET);
+
+	  //if (voltage <= 0.8f)
+	  //{
+		  //printf("ADC = %.3f V, Quality: GOOD \n\r", voltage);
+		  //HAL_GPIO_WritePin(D2_GPIO_Port, D2_Pin, GPIO_PIN_SET);
+	  //}
+	  //else if (voltage <= 1.5f)
+	  //{
+		  //printf("ADC = %.3f V, Quality: MEDIUM \n\r", voltage);
+		  //HAL_GPIO_WritePin(D5_GPIO_Port, D5_Pin, GPIO_PIN_SET);
+	  //}
+	  //else
+	  //{
+		  //printf("ADC = %.3f V, Quality: BAD \n\r", voltage);
+		  //HAL_GPIO_WritePin(D6_GPIO_Port, D6_Pin, GPIO_PIN_SET);
+	  //}
 
 
   }
@@ -379,6 +407,39 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 1200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
