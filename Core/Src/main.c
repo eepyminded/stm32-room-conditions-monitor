@@ -162,24 +162,25 @@ int main(void)
 
 	  // sending integers through 433 MHz
 
-	  void Send_Integer(uint16_t value) {
-		  uint8_t packet[7];
+#define HEAD_HUMIDITY 0x2D  // Header for Humidity
+#define HEAD_DANGER   0x21  // Header for MQ135
 
-		      packet[0] = 0xAA;
-		      packet[1] = 0xAA;
-		      packet[2] = 0xAA;
+void Send_Packet(uint16_t value, uint8_t type_header) {
+    uint8_t packet[7];
 
-		      packet[3] = 0x2D;
+    packet[0] = 0xAA;
+    packet[1] = 0xAA;
+    packet[2] = 0xAA;
 
-		      packet[4] = (value >> 8) & 0xFF;
-		      packet[5] = value & 0xFF;
+    packet[3] = type_header;
 
-		      // 4. Checksum (Simple addition)
-		      packet[6] = packet[4] + packet[5];
+    packet[4] = (value >> 8) & 0xFF;
+    packet[5] = value & 0xFF;
 
-		      // Send via UART
-		      HAL_UART_Transmit(&huart1, packet, 7, 100);
-	  }
+    packet[6] = packet[4] + packet[5];
+
+    HAL_UART_Transmit(&huart1, packet, 7, 100);
+}
 
   /* USER CODE END 2 */
 
@@ -195,6 +196,7 @@ int main(void)
 	  uint16_t start_reg_address = 0x28;
 	  float pressure_raw;
 	  float pressure_hPa;
+	  uint8_t danger_level = 0;
 
 	  HAL_I2C_Mem_Read(&hi2c1,
 	                   ILP_ADDR,
@@ -246,10 +248,28 @@ int main(void)
 
 	  float voltage = 3.3f * value / 4096.0f;
 
-	  //send data to another stm32
-	  Send_Integer(42);
+	  if (voltage <= 0.8f)
+	  {
+		  danger_level = 0;
+	  }
+	  else if (voltage <= 1.5f)
+	  {
+		  danger_level = 1;
+	  }
+	  else
+	  {
+		  danger_level = 2;
+	  }
 
-	  HAL_Delay(2000);
+	  //send data to another stm32
+	  printf("humidity sent: %d", humidity);
+	  Send_Packet((int)humidity, HEAD_HUMIDITY);
+	  HAL_Delay(100);
+
+	  printf("danger level sent: %d", danger_level);
+	  Send_Packet((int)danger_level, HEAD_DANGER);
+
+	  HAL_Delay(1000);
 
 
 	  // showing the data
